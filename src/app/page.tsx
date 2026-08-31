@@ -1,135 +1,177 @@
 "use client";
 
-import { useState, useRef, useEffect, FormEvent } from "react";
+import {
+  BriefcaseBusiness,
+  Building2,
+  Check,
+  Copy,
+  ExternalLink,
+  Gem,
+  Globe2,
+  Landmark,
+  Menu,
+  MessageSquarePlus,
+  Phone,
+  Send,
+  Sparkles,
+  Square,
+  Trash2,
+  Waves,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
+
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import {
+  Message as ChatMessage,
+  MessageAction,
+  MessageActions,
+  MessageContent,
+  MessageResponse,
+} from "@/components/ai-elements/message";
+import { Button } from "@/components/ui/button";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  timestamp: Date;
 }
 
 interface QuickTopic {
   title: string;
   category: string;
   prompt: string;
-  icon: string;
+  icon: LucideIcon;
 }
 
 const FEATURED_PROMPTS: QuickTopic[] = [
   {
     title: "Trump Tower Dubai",
     category: "Dubai, UAE",
-    prompt: "Tell me about the Trump International Hotel & Tower Dubai, its podium contractor, and timeline.",
-    icon: "🏙️",
+    prompt:
+      "Tell me about the Trump International Hotel & Tower Dubai, its podium contractor, and timeline.",
+    icon: Building2,
   },
   {
-    title: "Lamborghini Villas",
+    title: "Lamborghini villas",
     category: "Benahavís, Spain",
-    prompt: "What are the Tierra Viva luxury villas designed by Automobili Lamborghini in Spain?",
-    icon: "🏎️",
+    prompt:
+      "What are the Tierra Viva luxury villas designed by Automobili Lamborghini in Spain?",
+    icon: Gem,
   },
   {
-    title: "AIDA Oman & FENDI Casa",
+    title: "AIDA Oman",
     category: "Muscat, Oman",
-    prompt: "Explain the AIDA masterplan in Oman and the Azure Oceanfront Villas by FENDI Casa.",
-    icon: "🌊",
+    prompt:
+      "Explain the AIDA masterplan in Oman and the Azure Oceanfront Villas by FENDI Casa.",
+    icon: Waves,
   },
   {
-    title: "Wasalt Proptech Platform",
-    category: "Digital Platform",
-    prompt: "What services and property search features does Wasalt provide for luxury buyers and investors?",
-    icon: "📱",
+    title: "Investment overview",
+    category: "Global portfolio",
+    prompt:
+      "Give me an investor overview of Dar Global's international portfolio, brand partners, and market presence.",
+    icon: BriefcaseBusiness,
   },
   {
-    title: "Saudi Arabia Projects",
+    title: "Saudi developments",
     category: "Riyadh & Jeddah",
-    prompt: "What are Dar Global's developments in Saudi Arabia like Rayana Trump Mansions and Amaya Jeddah?",
-    icon: "🇸🇦",
+    prompt:
+      "What are Dar Global's developments in Saudi Arabia, including Rayana Trump Mansions and Amaya Jeddah?",
+    icon: Landmark,
   },
   {
-    title: "Brand Partnerships",
-    category: "Global Portfolio",
-    prompt: "Which 12+ luxury brands partner with Dar Global (Pagani, Aston Martin, Missoni, Trump, etc.)?",
-    icon: "💎",
+    title: "Wasalt platform",
+    category: "Digital services",
+    prompt:
+      "What services and property search features does Wasalt provide for luxury buyers and investors?",
+    icon: Globe2,
   },
 ];
 
-const MARKET_PILLS = [
-  { label: "All Markets", prompt: "Summarize Dar Global's properties across all 7 international markets." },
-  { label: "Dubai, UAE", prompt: "List all luxury residences and towers by Dar Global in Dubai." },
-  { label: "Oman (AIDA)", prompt: "What villas, hotels, and golf communities are located in AIDA Muscat, Oman?" },
-  { label: "Saudi Arabia", prompt: "Tell me about the Rayana community in Wadi Safar and Amaya in Jeddah." },
-  { label: "Spain", prompt: "What projects does Dar Global have in Spain (Tierra Viva & Marea)?" },
-  { label: "Qatar", prompt: "Tell me about Les Vagues by Elie Saab and Sea La Vie in Doha, Qatar." },
-  { label: "Investor Info", prompt: "What is Dar Global's LSE listing info, $23B portfolio, and financing updates?" },
+const MARKET_PROMPTS = [
+  {
+    label: "Dubai",
+    prompt: "List Dar Global's luxury residences and towers in Dubai.",
+  },
+  {
+    label: "Oman",
+    prompt: "What villas, hotels, and golf communities are located in AIDA, Oman?",
+  },
+  {
+    label: "Saudi Arabia",
+    prompt: "Compare Dar Global's Rayana and Amaya developments in Saudi Arabia.",
+  },
+  {
+    label: "Spain",
+    prompt: "Compare Dar Global's Tierra Viva and Marea projects in Spain.",
+  },
 ];
 
-function formatMarkdown(text: string): string {
-  let html = text
-    // Replace markdown tables
-    .replace(/\n\|(.+)\|\n\|[-:| ]+\|\n((?:\|.*\|\n?)+)/g, (_, header, body) => {
-      const ths = header
-        .split("|")
-        .filter((cell: string) => cell.trim().length > 0)
-        .map((cell: string) => `<th>${cell.trim()}</th>`)
-        .join("");
-      const trs = body
-        .trim()
-        .split("\n")
-        .map((row: string) => {
-          const tds = row
-            .split("|")
-            .filter((cell: string) => cell.trim().length > 0)
-            .map((cell: string) => `<td>${cell.trim()}</td>`)
-            .join("");
-          return `<tr>${tds}</tr>`;
-        })
-        .join("");
-      return `<div class="overflow-x-auto my-3"><table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></div>`;
-    })
-    // Headers
-    .replace(/^### (.*$)/gim, "<h3>$1</h3>")
-    .replace(/^## (.*$)/gim, "<h2>$1</h2>")
-    .replace(/^# (.*$)/gim, "<h1>$1</h1>")
-    // Bold & Italics
-    .replace(/\*\*\*(.*?)\*\*\*/g, "<strong><em>$1</em></strong>")
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.*?)\*/g, "<em>$1</em>")
-    // Horizontal rule
-    .replace(/^---$/gim, "<hr/>")
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-    // Unordered lists
-    .replace(/^[-•*]\s+(.+)/gm, "<li>$1</li>")
-    // Ordered lists
-    .replace(/^\d+\.\s+(.+)/gm, "<li>$1</li>");
+function BrandMark({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex shrink-0 items-center justify-center rounded-xl bg-[#20201f] text-white shadow-sm ${
+        compact ? "size-8" : "size-11"
+      }`}
+    >
+      <Sparkles className={compact ? "size-4" : "size-5"} strokeWidth={1.8} />
+    </span>
+  );
+}
 
-  // Wrap lists
-  html = html.replace(/((?:<li>.*?<\/li>\s*)+)/g, "<ul>$1</ul>");
+function WelcomeScreen({ onSelect }: { onSelect: (prompt: string) => void }) {
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col items-center py-8 text-center md:py-12">
+      <BrandMark />
+      <h1 className="mt-5 text-balance text-3xl font-semibold tracking-[-0.035em] text-foreground md:text-[2.15rem]">
+        How can I help you invest globally?
+      </h1>
+      <p className="mt-3 max-w-xl text-pretty text-sm leading-6 text-muted-foreground md:text-[15px]">
+        Explore Dar Global residences, destinations, brand partnerships, and Wasalt services with a specialist luxury property concierge.
+      </p>
 
-  // Paragraphs
-  html = html
-    .split(/\n\n+/)
-    .map((block) => {
-      const trimmed = block.trim();
-      if (!trimmed) return "";
-      if (
-        trimmed.startsWith("<h1") ||
-        trimmed.startsWith("<h2") ||
-        trimmed.startsWith("<h3") ||
-        trimmed.startsWith("<ul") ||
-        trimmed.startsWith("<ol") ||
-        trimmed.startsWith("<div") ||
-        trimmed.startsWith("<hr")
-      ) {
-        return trimmed;
-      }
-      return `<p>${trimmed.replace(/\n/g, "<br/>")}</p>`;
-    })
-    .join("");
+      <div className="mt-9 grid w-full grid-cols-1 gap-2.5 sm:grid-cols-2">
+        {FEATURED_PROMPTS.slice(0, 4).map((topic) => {
+          const Icon = topic.icon;
 
-  return html;
+          return (
+            <button
+              className="group flex min-h-24 items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              key={topic.title}
+              onClick={() => onSelect(topic.prompt)}
+              type="button"
+            >
+              <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors group-hover:text-foreground">
+                <Icon className="size-4" strokeWidth={1.8} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-foreground">
+                  {topic.title}
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  {topic.category} · Ask for the complete overview
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function Home() {
@@ -140,550 +182,443 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const requestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading]);
+    return () => requestRef.current?.abort();
+  }, []);
 
-  const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const resetComposer = () => {
+    setInput("");
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+    }
   };
 
   const handleNewChat = () => {
+    requestRef.current?.abort();
+    requestRef.current = null;
     setMessages([]);
     setError(null);
-    setInput("");
-    if (inputRef.current) {
-      inputRef.current.style.height = "auto";
-      inputRef.current.focus();
-    }
+    setIsLoading(false);
+    setSidebarOpen(false);
+    resetComposer();
+    window.setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const handleStop = () => {
+    requestRef.current?.abort();
+    requestRef.current = null;
+    setIsLoading(false);
+  };
+
+  const handleCopy = async (id: string, text: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    window.setTimeout(() => setCopiedId(null), 1800);
   };
 
   const sendMessage = async (content: string) => {
-    if (!content.trim() || isLoading) return;
+    const trimmedContent = content.trim();
+    if (!trimmedContent || isLoading) return;
 
-    setError(null);
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
-      content: content.trim(),
-      timestamp: new Date(),
+      content: trimmedContent,
     };
+    const chatHistory = [...messages, userMessage].map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
+    const controller = new AbortController();
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
+    requestRef.current = controller;
+    setError(null);
+    setMessages((current) => [...current, userMessage]);
     setIsLoading(true);
-
-    if (inputRef.current) {
-      inputRef.current.style.height = "auto";
-    }
+    setSidebarOpen(false);
+    resetComposer();
 
     try {
-      const chatHistory = [...messages, userMessage].map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }));
-
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: chatHistory }),
+        signal: controller.signal,
       });
-
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || `Server responded with status ${response.status}`);
+        throw new Error(
+          data.error || `The concierge returned status ${response.status}.`,
+        );
       }
 
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: data.message,
-        timestamp: new Date(),
-      };
+      if (!controller.signal.aborted) {
+        setMessages((current) => [
+          ...current,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: data.message,
+          },
+        ]);
+      }
+    } catch (caughtError) {
+      if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
+        return;
+      }
 
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to retrieve response. Please try again.";
-      setError(errorMessage);
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "I couldn't reach the concierge. Please try again.",
+      );
     } finally {
-      setIsLoading(false);
-      setTimeout(() => inputRef.current?.focus(), 100);
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setIsLoading(false);
+        window.setTimeout(() => inputRef.current?.focus(), 50);
+      }
     }
   };
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    sendMessage(input);
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void sendMessage(input);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void sendMessage(input);
     }
   };
 
-  const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    const textarea = e.target;
-    textarea.style.height = "auto";
-    textarea.style.height = Math.min(textarea.scrollHeight, 140) + "px";
-  };
-
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const handleTextareaChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(event.target.value);
+    event.target.style.height = "auto";
+    event.target.style.height = `${Math.min(event.target.scrollHeight, 160)}px`;
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#000000] text-white font-sans overflow-hidden">
-      {/* ========================================================================= */}
-      {/* LEFT SIDEBAR (Desktop & Mobile Drawer)                                    */}
-      {/* ========================================================================= */}
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-background text-foreground">
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 bg-[#09090b] border-r border-white/10 flex flex-col transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[272px] flex-col border-r border-sidebar-border bg-sidebar transition-transform duration-200 ease-out md:relative md:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Sidebar Header */}
-        <div className="p-4 border-b border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-white text-black font-bold flex items-center justify-center text-sm tracking-tighter">
-              DG
-            </div>
-            <div>
-              <div className="font-semibold text-sm tracking-tight text-white flex items-center gap-1.5">
-                DarGlobal <span className="text-zinc-500 font-normal">×</span> Wasalt
-              </div>
-              <div className="text-[11px] text-zinc-400">AI Luxury Concierge</div>
-            </div>
-          </div>
-          {/* Mobile Close */}
+        <div className="flex h-14 items-center justify-between px-3">
           <button
+            className="flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            onClick={handleNewChat}
+            type="button"
+          >
+            <BrandMark compact />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold tracking-tight">
+                Dar Global AI
+              </span>
+              <span className="block truncate text-[11px] text-muted-foreground">
+                Powered by Wasalt
+              </span>
+            </span>
+          </button>
+          <Button
+            aria-label="Close menu"
+            className="md:hidden"
             onClick={() => setSidebarOpen(false)}
-            className="md:hidden text-zinc-400 hover:text-white p-1 rounded-md"
-            aria-label="Close sidebar"
+            size="icon"
+            type="button"
+            variant="ghost"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+            <X className="size-4" />
+          </Button>
         </div>
 
-        {/* New Chat Button */}
-        <div className="p-3">
-          <button
-            onClick={() => {
-              handleNewChat();
-              setSidebarOpen(false);
-            }}
-            className="w-full py-2.5 px-3.5 rounded-lg bg-white text-black hover:bg-zinc-200 transition-colors font-medium text-xs flex items-center justify-center gap-2 shadow-sm"
+        <div className="px-3 pt-2">
+          <Button
+            className="h-10 w-full justify-start gap-3 border-sidebar-border bg-background px-3 shadow-none hover:bg-sidebar-accent"
+            onClick={handleNewChat}
+            type="button"
+            variant="outline"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            New Conversation
-          </button>
+            <MessageSquarePlus className="size-4" />
+            New conversation
+          </Button>
         </div>
 
-        {/* Quick Topics Navigation */}
-        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-          <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-            Curated Portfolio Topics
-          </div>
-          {FEATURED_PROMPTS.map((item, idx) => (
-            <button
-              key={idx}
-              onClick={() => {
-                sendMessage(item.prompt);
-                setSidebarOpen(false);
-              }}
-              className="w-full text-left p-2.5 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/10 transition-all text-xs group flex items-start gap-2.5"
-            >
-              <span className="text-sm mt-0.5">{item.icon}</span>
-              <div className="flex-1 overflow-hidden">
-                <div className="font-medium text-zinc-200 group-hover:text-white truncate">
-                  {item.title}
-                </div>
-                <div className="text-[11px] text-zinc-400 truncate">{item.category}</div>
-              </div>
-            </button>
-          ))}
-        </div>
+        <nav aria-label="Explore property topics" className="flex-1 overflow-y-auto px-3 py-6">
+          <p className="px-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            Explore
+          </p>
+          <div className="mt-2 space-y-0.5">
+            {FEATURED_PROMPTS.map((topic) => {
+              const Icon = topic.icon;
 
-        {/* Direct Contact / Concierge Card */}
-        <div className="p-3 border-t border-white/10 space-y-2 bg-black/40">
-          <div className="text-[11px] font-medium text-zinc-400 px-1">Direct Sales Concierge</div>
-          <div className="grid grid-cols-2 gap-2">
-            <a
-              href="https://api.whatsapp.com/send?phone=97180040409"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="py-2 px-2 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-200 hover:text-white text-[11px] flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <span>WhatsApp</span>
-            </a>
-            <a
-              href="tel:+97145629666"
-              className="py-2 px-2 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-200 hover:text-white text-[11px] flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <span>Call Us</span>
-            </a>
+              return (
+                <button
+                  className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  key={topic.title}
+                  onClick={() => void sendMessage(topic.prompt)}
+                  type="button"
+                >
+                  <Icon
+                    className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
+                    strokeWidth={1.8}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-medium">
+                      {topic.title}
+                    </span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {topic.category}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
+        </nav>
 
-          <div className="pt-2 flex items-center justify-between text-[11px] text-zinc-400 px-1">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-              <span className="text-zinc-400">z-ai/glm-5.3-flash</span>
+        <div className="border-t border-sidebar-border p-3">
+          <div className="rounded-xl border border-sidebar-border bg-background p-3">
+            <div className="flex items-center gap-2 text-xs font-medium">
+              <span className="size-2 rounded-full bg-emerald-500" />
+              Sales concierge available
             </div>
-            <span className="text-zinc-400">LSE: DAR</span>
+            <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
+              Continue with a specialist for availability, pricing, and private viewings.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Button asChild className="flex-1" size="sm" variant="secondary">
+                <a href="tel:+97145629666">
+                  <Phone className="size-3.5" />
+                  Call
+                </a>
+              </Button>
+              <Button asChild className="flex-1" size="sm" variant="secondary">
+                <a
+                  href="https://api.whatsapp.com/send?phone=97180040409"
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  WhatsApp
+                </a>
+              </Button>
+            </div>
           </div>
         </div>
       </aside>
 
-      {/* Backdrop for mobile drawer */}
-      {sidebarOpen && (
-        <div
+      {sidebarOpen ? (
+        <button
+          aria-label="Close menu"
+          className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px] md:hidden"
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 bg-black/70 z-30 md:hidden backdrop-blur-sm"
+          type="button"
         />
-      )}
+      ) : null}
 
-      {/* ========================================================================= */}
-      {/* MAIN CHAT CONTAINER                                                       */}
-      {/* ========================================================================= */}
-      <div className="flex-1 flex flex-col h-full bg-monochrome-grid overflow-hidden relative">
-        {/* Header Bar */}
-        <header className="glass-header h-14 px-4 flex items-center justify-between flex-shrink-0 z-20">
-          <div className="flex items-center gap-3">
-            {/* Sidebar toggle for mobile */}
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="md:hidden text-zinc-400 hover:text-white p-1.5 rounded-lg border border-white/10"
+      <section className="flex min-w-0 flex-1 flex-col bg-background">
+        <header className="flex h-14 shrink-0 items-center justify-between px-3 md:px-5">
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
               aria-label="Open menu"
+              className="md:hidden"
+              onClick={() => setSidebarOpen(true)}
+              size="icon"
+              type="button"
+              variant="ghost"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-              </svg>
-            </button>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold tracking-wider uppercase text-white bg-white/10 border border-white/20 px-2 py-0.5 rounded">
-                Official AI
-              </span>
-              <span className="hidden sm:inline-block text-xs text-zinc-400">
-                DarGlobal Luxury Real Estate & Wasalt
-              </span>
+              <Menu className="size-5" />
+            </Button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-semibold">Luxury Concierge</span>
+                <span className="hidden items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground sm:flex">
+                  <span className="size-1.5 rounded-full bg-emerald-500" />
+                  Online
+                </span>
+              </div>
+              <p className="hidden text-[11px] text-muted-foreground sm:block">
+                Dar Global portfolio specialist
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {messages.length > 0 && (
-              <button
+          <div className="flex items-center gap-1">
+            {messages.length > 0 ? (
+              <Button
+                aria-label="Clear conversation"
                 onClick={handleNewChat}
-                className="text-xs text-zinc-400 hover:text-white px-2.5 py-1 rounded-md border border-white/10 hover:border-white/25 transition-colors"
-                title="Reset conversation"
+                size="icon"
+                title="Clear conversation"
+                type="button"
+                variant="ghost"
               >
-                Clear Chat
-              </button>
-            )}
-            <a
-              href="https://www.darglobal.co.uk"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs font-medium text-black bg-white hover:bg-zinc-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1"
-            >
-              <span>Visit Portal</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                <polyline points="15 3 21 3 21 9"></polyline>
-                <line x1="10" y1="14" x2="21" y2="3"></line>
-              </svg>
-            </a>
+                <Trash2 className="size-4" />
+              </Button>
+            ) : null}
+            <Button asChild className="hidden sm:inline-flex" size="sm" variant="ghost">
+              <a href="https://www.darglobal.co.uk" rel="noopener noreferrer" target="_blank">
+                View portfolio
+                <ExternalLink className="size-3.5" />
+              </a>
+            </Button>
           </div>
         </header>
 
-        {/* Chat Stream Area */}
-        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
-          <div className="max-w-3xl mx-auto space-y-6">
-            {/* ----------------------------------------------------------------- */}
-            {/* WELCOME SCREEN (When zero messages)                               */}
-            {/* ----------------------------------------------------------------- */}
-            {messages.length === 0 && (
-              <div className="py-6 md:py-10 space-y-8 animate-slide-up">
-                {/* Hero Title */}
-                <div className="text-center space-y-3">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/15 bg-white/5 text-xs text-zinc-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-                    London-Listed Luxury Real Estate · LSE: DAR
-                  </div>
-                  <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-white">
-                    Luxury Real Estate, <br className="hidden sm:inline" />
-                    <span className="text-zinc-400">Reimagined by AI.</span>
-                  </h1>
-                  <p className="text-zinc-400 text-sm md:text-base max-w-xl mx-auto leading-relaxed">
-                    Explore ultra-luxury branded residences, masterplan communities, and investment opportunities across Dubai, Oman, Saudi Arabia, Spain, Qatar, UK, and Maldives.
-                  </p>
-                </div>
+        <Conversation className="min-h-0">
+          <ConversationContent
+            className={`mx-auto w-full max-w-3xl px-4 md:px-8 ${
+              messages.length === 0 ? "min-h-full justify-center py-4" : "py-10"
+            }`}
+          >
+            {messages.length === 0 ? <WelcomeScreen onSelect={sendMessage} /> : null}
 
-                {/* Key Metrics Strip */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-w-2xl mx-auto">
-                  <div className="glass-panel p-3 rounded-xl text-center space-y-0.5">
-                    <div className="text-lg font-bold text-white">$23B</div>
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-400">Portfolio Value</div>
-                  </div>
-                  <div className="glass-panel p-3 rounded-xl text-center space-y-0.5">
-                    <div className="text-lg font-bold text-white">7 Markets</div>
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-400">Global Presence</div>
-                  </div>
-                  <div className="glass-panel p-3 rounded-xl text-center space-y-0.5">
-                    <div className="text-lg font-bold text-white">12+ Partners</div>
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-400">Luxury Brands</div>
-                  </div>
-                  <div className="glass-panel p-3 rounded-xl text-center space-y-0.5">
-                    <div className="text-lg font-bold text-white">32 Years</div>
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-400">Track Record</div>
-                  </div>
-                </div>
-
-                {/* Interactive Suggestion Cards */}
-                <div className="space-y-3">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 text-center">
-                    Select a prompt to begin
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {FEATURED_PROMPTS.slice(0, 4).map((item, index) => (
-                      <button
-                        key={index}
-                        onClick={() => sendMessage(item.prompt)}
-                        className="prompt-card p-3.5 rounded-xl text-left flex items-start gap-3 group"
-                      >
-                        <span className="text-xl p-2 rounded-lg bg-white/5 border border-white/10 group-hover:scale-110 transition-transform">
-                          {item.icon}
-                        </span>
-                        <div className="flex-1 overflow-hidden">
-                          <div className="text-xs font-semibold text-white flex items-center justify-between">
-                            <span>{item.title}</span>
-                            <span className="text-[10px] font-normal text-zinc-400">
-                              {item.category}
-                            </span>
-                          </div>
-                          <p className="text-[12px] text-zinc-400 mt-1 line-clamp-2 leading-snug">
-                            {item.prompt}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Country Filter Quick Pills */}
-                <div className="space-y-2">
-                  <div className="text-[11px] text-zinc-400 text-center">Or explore by destination:</div>
-                  <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-xl mx-auto">
-                    {MARKET_PILLS.map((pill, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => sendMessage(pill.prompt)}
-                        className="text-xs px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/15 border border-white/10 text-zinc-300 hover:text-white transition-all"
-                      >
-                        {pill.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ----------------------------------------------------------------- */}
-            {/* MESSAGE STREAM                                                    */}
-            {/* ----------------------------------------------------------------- */}
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-3 animate-slide-up ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
-                {/* AI Avatar */}
-                {message.role === "assistant" && (
-                  <div className="w-8 h-8 rounded-lg bg-white text-black font-bold flex items-center justify-center text-xs flex-shrink-0 mt-1 shadow-md">
-                    DG
-                  </div>
-                )}
-
-                <div className={`flex flex-col gap-1.5 max-w-[90%] sm:max-w-[80%]`}>
-                  {/* Sender Name & Time */}
-                  <div
-                    className={`flex items-center gap-2 text-[11px] text-zinc-400 px-1 ${
-                      message.role === "user" ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <span className="font-medium text-zinc-300">
-                      {message.role === "user" ? "You" : "DarGlobal & Wasalt Concierge"}
-                    </span>
-                    <span>·</span>
-                    <span>{formatTime(message.timestamp)}</span>
-                  </div>
-
-                  {/* Bubble Container */}
-                  <div
-                    className={`p-4 text-sm ${
-                      message.role === "user" ? "user-bubble" : "assistant-bubble"
-                    }`}
-                  >
-                    {message.role === "assistant" ? (
-                      <div
-                        className="prose-custom"
-                        dangerouslySetInnerHTML={{ __html: formatMarkdown(message.content) }}
-                      />
-                    ) : (
-                      <div className="whitespace-pre-wrap">{message.content}</div>
-                    )}
-                  </div>
-
-                  {/* Actions for Assistant Bubble */}
-                  {message.role === "assistant" && (
-                    <div className="flex items-center gap-2 px-1 text-[11px] text-zinc-400">
-                      <button
-                        onClick={() => handleCopy(message.id, message.content)}
-                        className="hover:text-white flex items-center gap-1 transition-colors"
-                      >
-                        {copiedId === message.id ? (
-                          <>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                            <span>Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                            </svg>
-                            <span>Copy response</span>
-                          </>
-                        )}
-                      </button>
+            {messages.map((message) =>
+              message.role === "user" ? (
+                <ChatMessage className="max-w-[88%] sm:max-w-[78%]" from="user" key={message.id}>
+                  <MessageContent className="user-message text-[15px] leading-6">
+                    {message.content}
+                  </MessageContent>
+                </ChatMessage>
+              ) : (
+                <ChatMessage className="max-w-full" from="assistant" key={message.id}>
+                  <div className="flex items-start gap-3.5">
+                    <BrandMark compact />
+                    <div className="min-w-0 flex-1 pt-1">
+                      <p className="text-sm font-semibold tracking-tight">Luxury Concierge</p>
+                      <MessageContent className="mt-2 w-full max-w-none overflow-visible text-[15px] leading-7">
+                        <MessageResponse className="chat-response">
+                          {message.content}
+                        </MessageResponse>
+                      </MessageContent>
+                      <MessageActions className="-ml-1 mt-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                        <MessageAction
+                          aria-label="Copy response"
+                          onClick={() => void handleCopy(message.id, message.content)}
+                          tooltip={copiedId === message.id ? "Copied" : "Copy response"}
+                        >
+                          {copiedId === message.id ? (
+                            <Check className="size-4" />
+                          ) : (
+                            <Copy className="size-4" />
+                          )}
+                        </MessageAction>
+                      </MessageActions>
                     </div>
-                  )}
-                </div>
-              </div>
-            ))}
+                  </div>
+                </ChatMessage>
+              ),
+            )}
 
-            {/* Loading Indicator Bubble */}
-            {isLoading && (
-              <div className="flex gap-3 animate-slide-up">
-                <div className="w-8 h-8 rounded-lg bg-white text-black font-bold flex items-center justify-center text-xs flex-shrink-0 mt-1 shadow-md">
-                  DG
-                </div>
-                <div className="assistant-bubble px-4 py-3.5 flex items-center gap-2">
-                  <span className="text-xs text-zinc-400 mr-1">Consulting knowledge base</span>
-                  <div className="flex items-center gap-1">
-                    <span className="typing-dot-bw"></span>
-                    <span className="typing-dot-bw"></span>
-                    <span className="typing-dot-bw"></span>
+            {isLoading ? (
+              <ChatMessage aria-live="polite" className="max-w-full" from="assistant">
+                <div className="flex items-start gap-3.5">
+                  <BrandMark compact />
+                  <div className="pt-1">
+                    <p className="text-sm font-semibold tracking-tight">Luxury Concierge</p>
+                    <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>Reviewing the portfolio</span>
+                      <span className="flex items-center gap-1" aria-hidden="true">
+                        <span className="loading-dot" />
+                        <span className="loading-dot" />
+                        <span className="loading-dot" />
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              </ChatMessage>
+            ) : null}
 
-            {/* Error Message Box */}
-            {error && (
-              <div className="p-4 rounded-xl bg-red-950/40 border border-red-800/60 text-red-200 text-xs space-y-2 animate-slide-up">
-                <div className="flex items-center gap-2 font-semibold">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                  </svg>
-                  <span>Communication Error</span>
-                </div>
-                <p className="text-red-300/90">{error}</p>
-                <button
-                  onClick={() => setError(null)}
-                  className="text-[11px] underline hover:text-white"
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-        </main>
-
-        {/* ----------------------------------------------------------------- */}
-        {/* BOTTOM INPUT DOCK                                                 */}
-        {/* ----------------------------------------------------------------- */}
-        <footer className="p-4 md:px-8 border-t border-white/10 bg-black/90 backdrop-blur-xl z-20">
-          <div className="max-w-3xl mx-auto space-y-2.5">
-            {/* Quick Context Prompts Carousel */}
-            {messages.length > 0 && !isLoading && (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-                <span className="text-[11px] text-zinc-400 whitespace-nowrap">Suggested:</span>
-                {MARKET_PILLS.slice(1, 5).map((item, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => sendMessage(item.prompt)}
-                    className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/15 border border-white/10 text-zinc-300 hover:text-white transition-all text-[11px]"
+            {error ? (
+              <div
+                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                role="alert"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-medium">The concierge is unavailable</p>
+                    <p className="mt-1 text-xs leading-5 text-red-700">{error}</p>
+                  </div>
+                  <Button
+                    aria-label="Dismiss error"
+                    className="-mr-1 -mt-1 text-red-700 hover:bg-red-100 hover:text-red-900"
+                    onClick={() => setError(null)}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
                   >
-                    {item.label}
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </ConversationContent>
+          <ConversationScrollButton className="bottom-3 shadow-sm" />
+        </Conversation>
+
+        <footer className="shrink-0 bg-background px-3 pb-3 pt-2 md:px-6 md:pb-5">
+          <div className="mx-auto w-full max-w-3xl">
+            {messages.length > 0 && !isLoading ? (
+              <div className="no-scrollbar mb-2 flex gap-2 overflow-x-auto px-1 pb-1">
+                {MARKET_PROMPTS.map((market) => (
+                  <button
+                    className="whitespace-nowrap rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    key={market.label}
+                    onClick={() => void sendMessage(market.prompt)}
+                    type="button"
+                  >
+                    {market.label}
                   </button>
                 ))}
               </div>
-            )}
+            ) : null}
 
-            {/* Input Capsule */}
-            <form onSubmit={handleSubmit} className="glass-input rounded-2xl p-2 flex items-end gap-2">
-              <div className="flex-1 pl-2">
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={handleTextareaInput}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask about DarGlobal luxury projects, Trump Tower Dubai, AIDA Oman, Wasalt..."
-                  rows={1}
-                  disabled={isLoading}
-                  className="w-full bg-transparent text-white placeholder-zinc-500 text-sm focus:outline-none resize-none py-1.5 max-h-36 leading-relaxed"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={!input.trim() || isLoading}
-                className="w-10 h-10 rounded-xl bg-white text-black hover:bg-zinc-200 disabled:opacity-30 disabled:hover:bg-white transition-all flex items-center justify-center flex-shrink-0 shadow-md cursor-pointer disabled:cursor-not-allowed"
-                aria-label="Send Message"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
-              </button>
+            <form className="composer-shell flex items-end gap-2 rounded-[26px] border border-border bg-background p-2 pl-4" onSubmit={handleSubmit}>
+              <textarea
+                aria-label="Message the luxury concierge"
+                className="max-h-40 min-h-10 flex-1 resize-none bg-transparent py-2 text-[15px] leading-6 text-foreground outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
+                disabled={isLoading}
+                onChange={handleTextareaChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask about a property..."
+                ref={inputRef}
+                rows={1}
+                value={input}
+              />
+              {isLoading ? (
+                <Button
+                  aria-label="Stop response"
+                  className="size-10 rounded-full bg-foreground text-background hover:bg-foreground/85"
+                  onClick={handleStop}
+                  size="icon-lg"
+                  type="button"
+                >
+                  <Square className="size-3.5 fill-current" />
+                </Button>
+              ) : (
+                <Button
+                  aria-label="Send message"
+                  className="size-10 rounded-full bg-foreground text-background hover:bg-foreground/85"
+                  disabled={!input.trim()}
+                  size="icon-lg"
+                  type="submit"
+                >
+                  <Send className="size-4" />
+                </Button>
+              )}
             </form>
-
-            {/* Disclaimer Subtext */}
-            <div className="flex items-center justify-between text-[11px] text-zinc-400 px-2">
-              <span>DarGlobal PLC (LSE: DAR) & Wasalt Digital Platform</span>
-              <span className="hidden sm:inline">Responses grounded in official public releases</span>
-            </div>
+            <p className="mt-2 text-center text-[11px] leading-4 text-muted-foreground">
+              AI responses are based on public Dar Global and Wasalt information. Confirm pricing and availability with a sales advisor.
+            </p>
           </div>
         </footer>
-      </div>
+      </section>
     </div>
   );
 }
