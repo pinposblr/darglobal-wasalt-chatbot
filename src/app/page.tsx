@@ -4,6 +4,7 @@ import {
   BriefcaseBusiness,
   Building2,
   Check,
+  ChevronRight,
   Copy,
   ExternalLink,
   Gem,
@@ -131,9 +132,66 @@ const MARKET_PROMPTS = [
 
 const CONVERSATION_STORAGE_KEY = "dar-global-conversations:v1";
 const MAX_SAVED_CONVERSATIONS = 100;
+const RESPONSE_PROGRESS_STEPS = [
+  "Checking project details and locations",
+  "Comparing lifestyle and investment highlights",
+  "Organizing the most useful information",
+  "Preparing your tailored concierge response",
+];
+
+const RESPONSE_CONTEXT_LABELS = [
+  {
+    keywords: ["dubai", "uae"],
+    label: "Exploring Dubai residences",
+  },
+  {
+    keywords: ["oman", "aida", "muscat"],
+    label: "Reviewing Oman and AIDA projects",
+  },
+  {
+    keywords: ["saudi", "riyadh", "jeddah"],
+    label: "Reviewing Saudi developments",
+  },
+  {
+    keywords: ["spain", "benahavís", "benahavis", "marbella"],
+    label: "Exploring Spanish residences",
+  },
+  {
+    keywords: ["wasalt", "platform", "digital"],
+    label: "Reviewing Wasalt services",
+  },
+  {
+    keywords: ["invest", "yield", "return", "portfolio"],
+    label: "Assessing investment considerations",
+  },
+  {
+    keywords: ["brand", "lamborghini", "fendi", "trump"],
+    label: "Reviewing branded residences",
+  },
+];
 
 function getCurrentTimestamp() {
   return Date.now();
+}
+
+function getResponseProgressLabels(messages: Message[]) {
+  let latestQuestion = "";
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === "user") {
+      latestQuestion = messages[index].content.toLowerCase();
+      break;
+    }
+  }
+
+  const contextualLabel = RESPONSE_CONTEXT_LABELS.find(({ keywords }) =>
+    keywords.some((keyword) => latestQuestion.includes(keyword)),
+  )?.label;
+
+  return [
+    contextualLabel ?? "Reviewing relevant properties",
+    ...RESPONSE_PROGRESS_STEPS,
+  ];
 }
 
 function isMessage(value: unknown): value is Message {
@@ -288,8 +346,10 @@ export default function Home() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [responseStatusIndex, setResponseStatusIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [exploreExpanded, setExploreExpanded] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -320,6 +380,16 @@ export default function Home() {
       // The current chat remains usable if browser storage is unavailable or full.
     }
   }, [historyLoaded, savedConversations]);
+
+  useEffect(() => {
+    if (!isLoading) return;
+
+    const intervalId = window.setInterval(() => {
+      setResponseStatusIndex((current) => current + 1);
+    }, 2_200);
+
+    return () => window.clearInterval(intervalId);
+  }, [isLoading]);
 
   const saveConversation = (
     conversationId: string,
@@ -424,6 +494,7 @@ export default function Home() {
 
     requestRef.current = controller;
     setError(null);
+    setResponseStatusIndex(0);
     setIsLoading(true);
     setSidebarOpen(false);
 
@@ -564,6 +635,10 @@ export default function Home() {
     event.target.style.height = `${Math.min(event.target.scrollHeight, 160)}px`;
   };
 
+  const responseProgressLabels = getResponseProgressLabels(messages);
+  const responseProgressLabel =
+    responseProgressLabels[responseStatusIndex % responseProgressLabels.length];
+
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden bg-background text-foreground">
       <aside
@@ -627,7 +702,7 @@ export default function Home() {
                 {groupSavedConversations(savedConversations).map(
                   ([label, conversations]) => (
                     <div key={label}>
-                      <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">
+                      <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
                         {label}
                       </p>
                       <div className="space-y-0.5">
@@ -682,39 +757,52 @@ export default function Home() {
             aria-labelledby="explore-heading"
             className={savedConversations.length > 0 ? "mt-7" : ""}
           >
-            <h2
-              className="px-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
-              id="explore-heading"
-            >
-              Explore
+            <h2 id="explore-heading">
+              <button
+                aria-controls="explore-topics"
+                aria-expanded={exploreExpanded}
+                className="flex w-full items-center justify-between rounded-lg px-2 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                onClick={() => setExploreExpanded((current) => !current)}
+                type="button"
+              >
+                <span>Explore</span>
+                <ChevronRight
+                  aria-hidden="true"
+                  className={`size-3.5 transition-transform duration-200 ${
+                    exploreExpanded ? "rotate-90" : ""
+                  }`}
+                />
+              </button>
             </h2>
-            <div className="mt-2 space-y-0.5">
-              {FEATURED_PROMPTS.map((topic) => {
-                const Icon = topic.icon;
+            {exploreExpanded ? (
+              <div className="mt-2 space-y-0.5" id="explore-topics">
+                {FEATURED_PROMPTS.map((topic) => {
+                  const Icon = topic.icon;
 
-                return (
-                  <button
-                    className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    key={topic.title}
-                    onClick={() => void sendMessage(topic.prompt)}
-                    type="button"
-                  >
-                    <Icon
-                      className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
-                      strokeWidth={1.8}
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-medium">
-                        {topic.title}
+                  return (
+                    <button
+                      className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                      key={topic.title}
+                      onClick={() => void sendMessage(topic.prompt)}
+                      type="button"
+                    >
+                      <Icon
+                        className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
+                        strokeWidth={1.8}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-[13px] font-medium">
+                          {topic.title}
+                        </span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {topic.category}
+                        </span>
                       </span>
-                      <span className="block truncate text-[11px] text-muted-foreground">
-                        {topic.category}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </section>
         </nav>
 
@@ -908,13 +996,26 @@ export default function Home() {
                   <BrandMark compact />
                   <div className="pt-1">
                     <p className="text-sm font-semibold tracking-tight">Luxury Concierge</p>
-                    <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                      <span>Reviewing the portfolio</span>
-                      <span className="flex items-center gap-1" aria-hidden="true">
-                        <span className="loading-dot" />
-                        <span className="loading-dot" />
-                        <span className="loading-dot" />
-                      </span>
+                    <span className="sr-only">
+                      The concierge is preparing a response.
+                    </span>
+                    <div aria-hidden="true" className="mt-2.5">
+                      <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+                        Working on your request
+                      </p>
+                      <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                        <span
+                          className="animate-in fade-in slide-in-from-bottom-1 duration-300"
+                          key={`${responseStatusIndex}-${responseProgressLabel}`}
+                        >
+                          {responseProgressLabel}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="loading-dot" />
+                          <span className="loading-dot" />
+                          <span className="loading-dot" />
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
