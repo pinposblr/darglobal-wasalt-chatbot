@@ -11,6 +11,7 @@ import {
   Landmark,
   Menu,
   MessageSquarePlus,
+  Pencil,
   Phone,
   Send,
   Sparkles,
@@ -47,6 +48,14 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+}
+
+interface SavedConversation {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: number;
+  updatedAt: number;
 }
 
 interface QuickTopic {
@@ -120,6 +129,98 @@ const MARKET_PROMPTS = [
   },
 ];
 
+const CONVERSATION_STORAGE_KEY = "dar-global-conversations:v1";
+const MAX_SAVED_CONVERSATIONS = 100;
+
+function getCurrentTimestamp() {
+  return Date.now();
+}
+
+function isMessage(value: unknown): value is Message {
+  if (!value || typeof value !== "object") return false;
+
+  const message = value as Record<string, unknown>;
+
+  return (
+    typeof message.id === "string" &&
+    (message.role === "user" || message.role === "assistant") &&
+    typeof message.content === "string"
+  );
+}
+
+function loadSavedConversations(): SavedConversation[] {
+  try {
+    const storedValue = window.localStorage.getItem(CONVERSATION_STORAGE_KEY);
+    if (!storedValue) return [];
+
+    const parsedValue: unknown = JSON.parse(storedValue);
+    if (!Array.isArray(parsedValue)) return [];
+
+    return parsedValue
+      .filter((value): value is SavedConversation => {
+        if (!value || typeof value !== "object") return false;
+
+        const conversation = value as Record<string, unknown>;
+
+        return (
+          typeof conversation.id === "string" &&
+          typeof conversation.title === "string" &&
+          Array.isArray(conversation.messages) &&
+          conversation.messages.every(isMessage) &&
+          typeof conversation.createdAt === "number" &&
+          typeof conversation.updatedAt === "number"
+        );
+      })
+      .sort((first, second) => second.updatedAt - first.updatedAt)
+      .slice(0, MAX_SAVED_CONVERSATIONS);
+  } catch {
+    return [];
+  }
+}
+
+function createConversationTitle(messages: Message[]) {
+  const firstQuestion = messages
+    .find((message) => message.role === "user")
+    ?.content.replace(/\s+/g, " ")
+    .trim();
+
+  if (!firstQuestion) return "New conversation";
+  if (firstQuestion.length <= 46) return firstQuestion;
+
+  return `${firstQuestion.slice(0, 45).trimEnd()}…`;
+}
+
+function getHistoryGroup(updatedAt: number) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const conversationDate = new Date(updatedAt);
+  conversationDate.setHours(0, 0, 0, 0);
+  const daysAgo = Math.round(
+    (today.getTime() - conversationDate.getTime()) / 86_400_000,
+  );
+
+  if (daysAgo <= 0) return "Today";
+  if (daysAgo === 1) return "Yesterday";
+  if (daysAgo < 7) return "Previous 7 days";
+  if (daysAgo < 30) return "Previous 30 days";
+
+  return "Older";
+}
+
+function groupSavedConversations(conversations: SavedConversation[]) {
+  const groups = new Map<string, SavedConversation[]>();
+
+  conversations.forEach((conversation) => {
+    const label = getHistoryGroup(conversation.updatedAt);
+    const group = groups.get(label) ?? [];
+    group.push(conversation);
+    groups.set(label, group);
+  });
+
+  return Array.from(groups.entries());
+}
+
 function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
     <span
@@ -176,7 +277,16 @@ function WelcomeScreen({ onSelect }: { onSelect: (prompt: string) => void }) {
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [savedConversations, setSavedConversations] = useState<
+    SavedConversation[]
+  >([]);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -189,6 +299,54 @@ export default function Home() {
     return () => requestRef.current?.abort();
   }, []);
 
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      setSavedConversations(loadSavedConversations());
+      setHistoryLoaded(true);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  useEffect(() => {
+    if (!historyLoaded) return;
+
+    try {
+      window.localStorage.setItem(
+        CONVERSATION_STORAGE_KEY,
+        JSON.stringify(savedConversations),
+      );
+    } catch {
+      // The current chat remains usable if browser storage is unavailable or full.
+    }
+  }, [historyLoaded, savedConversations]);
+
+  const saveConversation = (
+    conversationId: string,
+    nextMessages: Message[],
+    updatedAt: number,
+  ) => {
+    setSavedConversations((current) => {
+      const existing = current.find(
+        (conversation) => conversation.id === conversationId,
+      );
+      const updatedConversation: SavedConversation = {
+        id: conversationId,
+        title: createConversationTitle(nextMessages),
+        messages: nextMessages,
+        createdAt: existing?.createdAt ?? updatedAt,
+        updatedAt,
+      };
+
+      return [
+        updatedConversation,
+        ...current.filter(
+          (conversation) => conversation.id !== conversationId,
+        ),
+      ].slice(0, MAX_SAVED_CONVERSATIONS);
+    });
+  };
+
   const resetComposer = () => {
     setInput("");
     if (inputRef.current) {
@@ -199,12 +357,47 @@ export default function Home() {
   const handleNewChat = () => {
     requestRef.current?.abort();
     requestRef.current = null;
+    setActiveConversationId(null);
     setMessages([]);
+    setEditingMessageId(null);
+    setEditingContent("");
     setError(null);
     setIsLoading(false);
     setSidebarOpen(false);
     resetComposer();
     window.setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const handleSelectConversation = (conversation: SavedConversation) => {
+    requestRef.current?.abort();
+    requestRef.current = null;
+    setActiveConversationId(conversation.id);
+    setMessages(conversation.messages);
+    setEditingMessageId(null);
+    setEditingContent("");
+    setError(null);
+    setIsLoading(false);
+    setSidebarOpen(false);
+    resetComposer();
+    window.setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const handleDeleteConversation = (conversationId: string) => {
+    setSavedConversations((current) =>
+      current.filter((conversation) => conversation.id !== conversationId),
+    );
+
+    if (activeConversationId === conversationId) {
+      requestRef.current?.abort();
+      requestRef.current = null;
+      setActiveConversationId(null);
+      setMessages([]);
+      setEditingMessageId(null);
+      setEditingContent("");
+      setError(null);
+      setIsLoading(false);
+      resetComposer();
+    }
   };
 
   const handleStop = () => {
@@ -219,16 +412,11 @@ export default function Home() {
     window.setTimeout(() => setCopiedId(null), 1800);
   };
 
-  const sendMessage = async (content: string) => {
-    const trimmedContent = content.trim();
-    if (!trimmedContent || isLoading) return;
-
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: trimmedContent,
-    };
-    const chatHistory = [...messages, userMessage].map((message) => ({
+  const requestAssistantResponse = async (
+    conversationId: string,
+    nextMessages: Message[],
+  ) => {
+    const chatHistory = nextMessages.map((message) => ({
       role: message.role,
       content: message.content,
     }));
@@ -236,10 +424,8 @@ export default function Home() {
 
     requestRef.current = controller;
     setError(null);
-    setMessages((current) => [...current, userMessage]);
     setIsLoading(true);
     setSidebarOpen(false);
-    resetComposer();
 
     try {
       const response = await fetch("/api/chat", {
@@ -257,14 +443,19 @@ export default function Home() {
       }
 
       if (!controller.signal.aborted) {
-        setMessages((current) => [
-          ...current,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: data.message,
-          },
-        ]);
+        const assistantMessage: Message = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: data.message,
+        };
+        const completedMessages = [...nextMessages, assistantMessage];
+
+        setMessages(completedMessages);
+        saveConversation(
+          conversationId,
+          completedMessages,
+          getCurrentTimestamp(),
+        );
       }
     } catch (caughtError) {
       if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
@@ -282,6 +473,76 @@ export default function Home() {
         setIsLoading(false);
         window.setTimeout(() => inputRef.current?.focus(), 50);
       }
+    }
+  };
+
+  const sendMessage = async (content: string) => {
+    const trimmedContent = content.trim();
+    if (!trimmedContent || isLoading) return;
+
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: trimmedContent,
+    };
+    const conversationId = activeConversationId ?? crypto.randomUUID();
+    const nextMessages = [...messages, userMessage];
+
+    setActiveConversationId(conversationId);
+    setMessages(nextMessages);
+    saveConversation(conversationId, nextMessages, getCurrentTimestamp());
+    resetComposer();
+    await requestAssistantResponse(conversationId, nextMessages);
+  };
+
+  const handleStartEditing = (message: Message) => {
+    setEditingMessageId(message.id);
+    setEditingContent(message.content);
+  };
+
+  const handleCancelEditing = () => {
+    setEditingMessageId(null);
+    setEditingContent("");
+  };
+
+  const handleSaveEdit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedContent = editingContent.trim();
+    if (!trimmedContent || !editingMessageId || !activeConversationId) return;
+
+    const messageIndex = messages.findIndex(
+      (message) => message.id === editingMessageId,
+    );
+    if (messageIndex < 0 || messages[messageIndex].role !== "user") return;
+
+    const editedMessage: Message = {
+      ...messages[messageIndex],
+      content: trimmedContent,
+    };
+    const nextMessages = [
+      ...messages.slice(0, messageIndex),
+      editedMessage,
+    ];
+
+    setEditingMessageId(null);
+    setEditingContent("");
+    setMessages(nextMessages);
+    saveConversation(
+      activeConversationId,
+      nextMessages,
+      getCurrentTimestamp(),
+    );
+    await requestAssistantResponse(activeConversationId, nextMessages);
+  };
+
+  const handleEditKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      handleCancelEditing();
+    } else if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
     }
   };
 
@@ -350,37 +611,111 @@ export default function Home() {
           </Button>
         </div>
 
-        <nav aria-label="Explore property topics" className="flex-1 overflow-y-auto px-3 py-6">
-          <p className="px-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-            Explore
-          </p>
-          <div className="mt-2 space-y-0.5">
-            {FEATURED_PROMPTS.map((topic) => {
-              const Icon = topic.icon;
+        <nav
+          aria-label="Conversation history and property topics"
+          className="flex-1 overflow-y-auto px-3 py-6"
+        >
+          {savedConversations.length > 0 ? (
+            <section aria-labelledby="history-heading">
+              <h2
+                className="px-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+                id="history-heading"
+              >
+                History
+              </h2>
+              <div className="mt-2 space-y-4">
+                {groupSavedConversations(savedConversations).map(
+                  ([label, conversations]) => (
+                    <div key={label}>
+                      <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">
+                        {label}
+                      </p>
+                      <div className="space-y-0.5">
+                        {conversations.map((conversation) => (
+                          <div
+                            className={`group/history relative flex items-center rounded-lg transition-colors hover:bg-sidebar-accent focus-within:bg-sidebar-accent ${
+                              activeConversationId === conversation.id
+                                ? "bg-sidebar-accent"
+                                : ""
+                            }`}
+                            key={conversation.id}
+                          >
+                            <button
+                              aria-current={
+                                activeConversationId === conversation.id
+                                  ? "page"
+                                  : undefined
+                              }
+                              className="min-w-0 flex-1 truncate rounded-lg py-2 pl-2.5 pr-9 text-left text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
+                              onClick={() =>
+                                handleSelectConversation(conversation)
+                              }
+                              title={conversation.title}
+                              type="button"
+                            >
+                              {conversation.title}
+                            </button>
+                            <Button
+                              aria-label={`Delete ${conversation.title}`}
+                              className="absolute right-1 size-7 opacity-100 transition-opacity sm:opacity-0 sm:group-hover/history:opacity-100 sm:group-focus-within/history:opacity-100"
+                              onClick={() =>
+                                handleDeleteConversation(conversation.id)
+                              }
+                              size="icon"
+                              title="Delete conversation"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+            </section>
+          ) : null}
 
-              return (
-                <button
-                  className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                  key={topic.title}
-                  onClick={() => void sendMessage(topic.prompt)}
-                  type="button"
-                >
-                  <Icon
-                    className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
-                    strokeWidth={1.8}
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-medium">
-                      {topic.title}
+          <section
+            aria-labelledby="explore-heading"
+            className={savedConversations.length > 0 ? "mt-7" : ""}
+          >
+            <h2
+              className="px-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+              id="explore-heading"
+            >
+              Explore
+            </h2>
+            <div className="mt-2 space-y-0.5">
+              {FEATURED_PROMPTS.map((topic) => {
+                const Icon = topic.icon;
+
+                return (
+                  <button
+                    className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    key={topic.title}
+                    onClick={() => void sendMessage(topic.prompt)}
+                    type="button"
+                  >
+                    <Icon
+                      className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
+                      strokeWidth={1.8}
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] font-medium">
+                        {topic.title}
+                      </span>
+                      <span className="block truncate text-[11px] text-muted-foreground">
+                        {topic.category}
+                      </span>
                     </span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {topic.category}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         </nav>
 
         <div className="border-t border-sidebar-border p-3">
@@ -452,14 +787,14 @@ export default function Home() {
           <div className="flex items-center gap-1">
             {messages.length > 0 ? (
               <Button
-                aria-label="Clear conversation"
+                aria-label="Start new conversation"
                 onClick={handleNewChat}
                 size="icon"
-                title="Clear conversation"
+                title="Start new conversation"
                 type="button"
                 variant="ghost"
               >
-                <Trash2 className="size-4" />
+                <MessageSquarePlus className="size-4" />
               </Button>
             ) : null}
             <Button asChild className="hidden sm:inline-flex" size="sm" variant="ghost">
@@ -481,10 +816,61 @@ export default function Home() {
 
             {messages.map((message) =>
               message.role === "user" ? (
-                <ChatMessage className="max-w-[88%] sm:max-w-[78%]" from="user" key={message.id}>
-                  <MessageContent className="user-message text-[15px] leading-6">
-                    {message.content}
-                  </MessageContent>
+                <ChatMessage
+                  className="max-w-[88%] sm:max-w-[78%]"
+                  from="user"
+                  key={message.id}
+                >
+                  {editingMessageId === message.id ? (
+                    <form
+                      className="w-full rounded-2xl bg-secondary p-3 shadow-sm"
+                      onSubmit={handleSaveEdit}
+                    >
+                      <textarea
+                        aria-label="Edit your message"
+                        autoFocus
+                        className="max-h-52 min-h-20 w-full resize-y bg-transparent px-1 text-[15px] leading-6 text-foreground outline-none"
+                        onChange={(event) => setEditingContent(event.target.value)}
+                        onKeyDown={handleEditKeyDown}
+                        rows={3}
+                        value={editingContent}
+                      />
+                      <div className="mt-2 flex justify-end gap-2">
+                        <Button
+                          onClick={handleCancelEditing}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          disabled={!editingContent.trim()}
+                          size="sm"
+                          type="submit"
+                        >
+                          Save & submit
+                        </Button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <MessageContent className="user-message text-[15px] leading-6">
+                        {message.content}
+                      </MessageContent>
+                      {!isLoading ? (
+                        <MessageActions className="justify-end opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                          <MessageAction
+                            aria-label="Edit message"
+                            onClick={() => handleStartEditing(message)}
+                            tooltip="Edit message"
+                          >
+                            <Pencil className="size-3.5" />
+                          </MessageAction>
+                        </MessageActions>
+                      ) : null}
+                    </>
+                  )}
                 </ChatMessage>
               ) : (
                 <ChatMessage className="max-w-full" from="assistant" key={message.id}>
