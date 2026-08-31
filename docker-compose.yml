@@ -7,13 +7,13 @@ services:
       dockerfile: Dockerfile
       args:
         - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-        - OPENROUTER_MODEL=${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct:free}
+        - OPENROUTER_MODEL=${OPENROUTER_MODEL:-z-ai/glm-5.3-flash}
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     ports:
       - "3000:3000"
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct:free}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-z-ai/glm-5.3-flash}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     restart: unless-stopped
     healthcheck:

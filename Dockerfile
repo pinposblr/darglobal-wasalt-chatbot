@@ -15,7 +15,7 @@ COPY . .
 
 # Build arguments for environment variables
 ARG OPENROUTER_API_KEY
-ARG OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct:free
+ARG OPENROUTER_MODEL=z-ai/glm-5.3-flash
 ARG NEXT_PUBLIC_APP_URL=https://darglobal-wasalt-chatbot.vercel.app
 
 ENV OPENROUTER_API_KEY=$OPENROUTER_API_KEY
